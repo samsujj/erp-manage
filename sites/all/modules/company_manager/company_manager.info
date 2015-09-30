@@ -1,0 +1,6 @@
+name = "Company Manager"
+description = "Company Manager Entity"
+core = 7.x
+package = Company Manager
+
+dependencies[] = entity

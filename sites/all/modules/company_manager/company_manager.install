@@ -1,0 +1,56 @@
+<?php
+/**
+ * @file
+ * Install, update, and uninstall functions for contact us
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function company_manager_schema() {
+  $schema = array();
+
+  $schema['company_manager'] = array(
+    'description' => 'Company Manager Table for Entity',
+    'fields' => array(
+      'company_id' => array(
+        'description' => 'Primary Key contact us id',
+        'type' => 'serial',
+        'not null' => TRUE,
+      ),
+      'established_date' => array(
+        'description' => 'Established Date',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'service_tax_number' => array(
+        'description' => 'Service Tax Number',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'tan_number' => array(
+        'description' => 'Tan Number',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'search_tag' => array(
+        'description' => 'search_tag',
+        'type' => 'varchar',
+        'length' => '255',
+        'not null' => TRUE,
+        'default' => '',
+      ),
+
+
+    ),
+    'primary key' => array('company_id'),
+
+  );
+  return $schema;
+}

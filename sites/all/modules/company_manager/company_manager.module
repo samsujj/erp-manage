@@ -1,0 +1,414 @@
+<?php
+
+/**
+ * @file
+ * contactus.module
+ */
+
+// 50 items per page.
+define('TOTAL_ITEMS_PER_PAGE_COMPANY', 10);
+
+// Admin uri links.
+define('ADMIN_CONTENT_COMPANY_MANAGE_URI', '/admin/content/company_manager/manage/');
+define('ADMIN_CONTENT_COMPANY_EDIT_URI', 'admin/content/company_manager/edit/');
+define('ADMIN_CONTENT_COMPANY_URI', '/admin/content/company_manager');
+
+/**
+ * Implements hook_entity_info().
+ */
+function company_manager_entity_info() {
+    $company_manager_entity_info['company_manager'] = array(
+        'label' => t('Company Manager'),
+        'label callback' => 'company_manager_label_callback',
+        'entity class' => 'company_manager',
+        'controller class' => 'company_managerController',
+        'base table' => 'company_manager',
+        'uri callback' => 'company_manager_uri',
+        'fieldable' => TRUE,
+        'entity keys' => array(
+            'id' => 'company_id',
+        ),
+        'uri callback' => 'entity_class_uri',
+        'load hook' => 'company_manager_load',
+        'static cache' => TRUE,
+        'admin ui' => array(
+            'path' => 'admin/content/company_manager',
+            'controller class' => 'company_managerUIController',
+            'file' => 'includes/company_manager.admin.inc',
+        ),
+        'module' => 'company_manager',
+        'access callback' => 'company_manager_access_callback',
+        'bundles' => array(
+            'company_manager' => array(
+                'label' => 'Company Manager',
+                'admin' => array(
+                    'path' => 'admin/structure/company_manager/manage',
+                    'access arguments' => array('administer company_manager'),
+                ),
+            ),
+        ),
+        'views controller class' => 'EntityDefaultViewsController',
+    );
+
+    return $company_manager_entity_info;
+}
+
+
+
+
+function company_manager_menu() {
+    $items = array();
+
+    $items['company_manager/%company_manager'] = array(
+        'title' => 'Company Manager',
+        'page callback' => 'company_manager_view_entity',
+        'page arguments' => array(1),
+        'access callback' => 'company_manager_access_menu_callback',
+        'access arguments' => array('view', 1),
+    );
+
+    $items['admin/content/company_manager/bulk/delete/%'] = array(
+        'title' => 'Bulk Delete Company Manager',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('company_manager_bulk_delete', 5),
+        'access arguments' => array('administer company_manager entities'),
+        'file' => 'includes/company_manager.admin.inc',
+    );
+
+    $items['admin/structure/company_manager'] = array(
+        'title' => 'company_manager Fields',
+        'access arguments' => array('administer company_manager entities'),
+        'type' => MENU_NORMAL_ITEM,
+    );
+
+    return $items;
+}
+
+
+
+/**
+ * Implements hook_theme().
+ */
+function company_manager_theme() {
+    return array(
+        'company_manager_full' => array(
+            'variables' => array('contact' => NULL),
+            'file' => 'includes/company_manager.theme.inc',
+        ),
+    );
+}
+
+
+
+
+
+/**
+ * Check access permission for Lawmakers Entity UI.
+ */
+function company_manager_access_menu_callback($op, $lawmakers = NULL, $account = NULL) {
+    switch ($op) {
+        case 'view':
+            return user_access('view company_manager entities', $account);
+
+        case 'create':
+            return user_access('create company_manager entities', $account);
+
+        case 'update':
+            return user_access('edit company_manager entities', $account);
+
+        case 'delete':
+            return user_access('delete company_manager entities', $account);
+    }
+
+    return FALSE;
+}
+
+
+
+
+
+
+/**
+ * Custom controller for the lawmakers entity.
+ */
+class company_managerController extends EntityAPIController {
+
+    /**
+     * Override the save method.
+     */
+    public function save($entity, DatabaseTransaction $transaction = NULL) {
+        if (isset($entity->is_new)) {
+            $entity->created = REQUEST_TIME;
+        }
+
+        $entity->changed = REQUEST_TIME;
+        return parent::save($entity, $transaction);
+    }
+}
+
+
+function company_manager_access_callback() {
+    if (user_is_anonymous() && !user_access('administer company_manager entities')) {
+        return FALSE;
+    }
+    else {
+        return TRUE;
+    }
+}
+
+function company_manager_permission() {
+    return array(
+        'administer company_manager entities' => array(
+            'title' => t('Administer company_manager Entities'),
+            'description' => t('Allows a user to administer contact us entities'),
+        ),
+        'view company_manager entities' => array(
+            'title' => t('View company_manager Entity'),
+            'description' => t('Allows a user to view the contact entities.'),
+        ),
+
+    );
+}
+
+
+/**
+ * Custom controller for the administrator UI.
+ */
+class company_managerUIController extends EntityDefaultUIController {
+
+    /**
+     * Override the menu hook for default ui controller.
+     */
+    public function hook_menu() {
+        $items = parent::hook_menu();
+        $items[$this->path]['title'] = t('Company Manage');
+        $items[$this->path]['description'] = t('Manage Company, including fields.');
+        $items[$this->path]['access callback'] = 'company_manager_access_callback';
+        $items[$this->path]['access arguments'] = array('administer company_manager entities');
+        $items[$this->path]['type'] = MENU_LOCAL_TASK;
+        return $items;
+    }
+
+    /**
+     * Admin form for searching and doing bulk operations.
+     */
+    public function overviewForm($form, &$form_state) {
+        $form['pager'] = array('#theme' => 'pager');
+        //echo 656;
+
+        $header = array(
+            'established_date' => array('data' => t('Established Date'), 'field' => 'established_date'),
+            'service_tax_number' => array('data' => t('Service Tax Number'), 'field' => 'service_tax_number'),
+            'tan_number' => array('data' => t('Tan Number'), 'field' => 'tan_number'),
+            'operations' => array('data' => t('Operations'), 'field' => 'operations'),
+        );
+
+        $options = array();
+        $search_term = !empty($_GET['search']) ? $_GET['search'] : NULL;
+
+        $query = new EntityFieldQuery();
+        $query->entityCondition('entity_type', 'company_manager');
+
+        if (!empty($search_term)) {
+
+            //var_dump($search_term);
+            $query->propertyCondition('search_tag', '%' . $search_term . '%', 'like');
+
+        }
+        // Check for sort order and sort key.
+        if (!empty($_GET['sort']) && !empty($_GET['order'])) {
+            $sort = strtoupper($_GET['sort']);
+            $order = strtolower($_GET['order']);
+            $order = str_replace(' ', '_', $order);
+            if ($order != 'operations') {
+                $query->propertyOrderBy($order, $sort);
+            }
+        }
+
+        $query->pager(TOTAL_ITEMS_PER_PAGE_COMPANY);
+
+        $result = $query->execute();
+        //var_dump($result);
+        $contact_results = !empty($result['company_manager']) ? $result['company_manager'] : array();
+        $contactus_array = !empty($contact_results) ? company_manager_load_multiple(array_keys($contact_results)) : array();
+
+        //var_dump($contactus_array);
+        // exit;
+        foreach ($contactus_array as $contact_id => $contactus) {
+            $options['company_id-' . $contact_id] = array(
+                'established_date' => l($contactus->established_date, 'company_manager/' . $contactus->company_id),
+                'service_tax_number' => l($contactus->service_tax_number, 'company_manager/' . $contactus->company_id),
+                'tan_number' => l($contactus->tan_number, 'company_manager/' . $contactus->company_id),
+                'operations' =>
+                    l(t('View'), 'company_manager/' . $contactus->company_id) . ' ' .
+                    l(t('Edit'), ADMIN_CONTENT_COMPANY_MANAGE_URI . $contact_id ,array('query' => array('destination' => ADMIN_CONTENT_COMPANY_MANAGE_URI))) . ' ' .
+                    l(t('Delete'), ADMIN_CONTENT_COMPANY_MANAGE_URI . $contact_id . '/delete', array('attributes' => array('class' => array('contactus-delete-' . $contactus->company_id), ), 'query' => array('destination' => ADMIN_CONTENT_COMPANY_URI))),
+            );
+        }
+
+        $form['search'] = array(
+            '#type' => 'fieldset',
+            '#title' => t('Basic Search'),
+            '#collapsible' => TRUE,
+            '#collapsed' => !empty($search_term) ? FALSE : TRUE,
+        );
+
+        $form['search']['search_text'] = array(
+            '#type' => 'textfield',
+            '#title' => t('Search Term'),
+            '#default_value' => !empty($search_term) ? $search_term : '',
+        );
+
+        $form['search']['search_submit'] = array(
+            '#type' => 'submit',
+            '#value' => t('Search'),
+        );
+
+        $form['bulk_operations'] = array(
+            '#type' => 'fieldset',
+            '#title' => t('Bulk Operations'),
+            '#collapsible' => TRUE,
+            '#collapsed' => TRUE,
+        );
+
+        $form['bulk_operations']['operations'] = array(
+            '#type' => 'select',
+            '#options' => array(
+                0 => t('Select a bulk operation'),
+                'delete' => t('Delete selected Comapany'),
+            ),
+        );
+
+        $form['bulk_operations']['submit'] = array(
+            '#type' => 'submit',
+            '#value' => t('Submit'),
+        );
+
+        $form['entities'] = array(
+            '#type' => 'tableselect',
+            '#header' => $header,
+            '#options' => $options,
+            '#attributes' => array('class' => array('entity-sort-table')),
+            '#empty' => t('There are no company.'),
+        );
+
+        return $form;
+    }
+
+    /**
+     * Form Submit method.
+     */
+    public function overviewFormSubmit($form, &$form_state) {
+        $values = $form_state['input'];
+        $contact_ids = array();
+
+
+
+        if (!empty($values['search_text'])) {
+            drupal_goto('admin/content/company_manager', array('query' => array('search' => $values['search_text'])));
+        }
+    }
+
+}
+
+function show_enquiry_in_detail($enqueystring){
+
+    return $enqueystring=str_replace(array('|','0','_'),array(' ','',' '),$enqueystring);
+}
+
+
+function company_manager_entity_query($conditions = array()) {
+
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'company_manager');
+
+    // Apply conditions.
+    foreach ($conditions as $key => $value) {
+        $query->propertyCondition($key, $value);
+    }
+
+    $result = $query->execute();
+
+    if (isset($result['company_manager'])) {
+        $contact = array_keys($result['company_manager']);
+    }
+    else {
+        $contact = array();
+    }
+
+    return $contact;
+}
+
+/**
+ * Label callback for lawmakers entities, for menu router, etc.
+ */
+function company_manager_label_callback($contact, $type) {
+    return empty($contact->username) ? 'Untitled Company' : $contact->company_id;
+}
+
+/**
+ * Saves Lawmaker to database.
+ */
+function company_manager_save(contactus $contact) {
+    return $contact->save();
+}
+
+
+
+function company_manager_view_entity($contact) {
+    //echo 5656;
+    //exit;
+    $fullname = $contact->company_id;
+    drupal_set_title($fullname);
+    // Path not entity.
+    $contact_output = theme('company_manager_full', array('contact' => $contact));
+    //var_dump($contact);
+    return $contact_output;
+}
+
+
+
+
+class company_manager extends Entity {
+    /**
+     * Override defaultUri().
+     */
+    protected function defaultUri() {
+        return array('path' => 'company_manager/' . $this->identifier());
+    }
+}
+
+
+
+/**
+ * Menu autoloader for /lawmakers.
+ */
+function company_manager_load($contact_id, $reset = FALSE) {
+    $contacts = company_manager_load_multiple(array($contact_id), array(), $reset);
+    return reset($contacts);
+}
+
+/**
+ * Load multiple lawmakers based on certain conditions.
+ */
+function company_manager_load_multiple($contact_id = array(), $conditions = array(), $reset = FALSE) {
+    return entity_load('company_manager', $contact_id, $conditions, $reset);
+}
+
+/**
+ * Deletes a lawmaker.
+ */
+function company_manager_delete(lawmakers $contacts) {
+    $contacts->delete();
+}
+
+/**
+ * Delete multiple lawmakers.
+ */
+function company_manager_delete_multiple(array $contact__ids) {
+    //var_dump($contact__ids);
+    //exit;
+
+    entity_get_controller('company_manager')->delete($contact__ids);
+}
+
